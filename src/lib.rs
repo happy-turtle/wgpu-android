@@ -20,7 +20,9 @@ fn fs_main() -> [[location(0)]] vec4<f32> {
 "#;
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
+    log::info!("run");
     let instance = wgpu::Instance::new(wgpu::Backends::GL);
+    log::info!("instance created");
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
@@ -29,6 +31,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         })
         .await
         .expect("Failed to find an appropriate adapter");
+    log::info!("adapter created");
 
     // Create the logical device and command queue
     let (device, queue) = adapter
@@ -42,6 +45,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         )
         .await
         .expect("Failed to create device");
+    log::info!("device created");
 
     // Load the shaders from disk
     let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
@@ -79,6 +83,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut surface = None;
 
     let start = std::time::Instant::now();
+    log::info!("setup event loop");
 
     event_loop.run(move |event, _, control_flow| {
         let _ = (&instance, &adapter, &shader, &pipeline_layout);
@@ -101,6 +106,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                 surface.take();
             }
             Event::MainEventsCleared => {
+                println!("main events cleared event");
                 let frame = surface
                     .as_ref()
                     .unwrap()
@@ -146,7 +152,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
 
 #[cfg_attr(
     target_os = "android",
-    ndk_glue::main(backtrace = "on", logger(level = "debug", tag = "wgpu"))
+    ndk_glue::main(backtrace = "full", logger(level = "debug", tag = "wgpu"))
 )]
 fn main() {
     log::info!("start");
