@@ -94,19 +94,33 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                 event: WindowEvent::Resized(size),
                 ..
             } => {
-                println!("resized: {:?}", size);
+                log::info!("resized: {:?}", size);
             }
             Event::Resumed => {
-                println!("resume");
+                log::info!("resume");
                 surface = Some(unsafe { instance.create_surface(&window) });
-                println!("surface: {:?}", surface);
+                let config = wgpu::SurfaceConfiguration {
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    format: surface
+                        .as_ref()
+                        .unwrap()
+                        .get_preferred_format(&adapter)
+                        .unwrap(),
+                    width: window.inner_size().width,
+                    height: window.inner_size().height,
+                    present_mode: wgpu::PresentMode::Fifo,
+                };
+                surface.as_ref().unwrap().configure(&device, &config);
+                log::info!("surface: {:?}", surface);
             }
             Event::Suspended => {
-                println!("suspend");
+                log::info!("suspend");
                 surface.take();
             }
-            Event::MainEventsCleared => {
-                println!("main events cleared event");
+            Event::RedrawRequested(_) => {
+                log::info!("redraw requested");
+                let texture = surface.as_ref().unwrap().get_current_texture().unwrap();
+                log::info!("texture: {:?}", texture);
                 let frame = surface
                     .as_ref()
                     .unwrap()
@@ -114,6 +128,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     .unwrap()
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
+                log::info!("got frame");
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
                 {
@@ -138,8 +153,21 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     rpass.set_pipeline(&render_pipeline);
                     rpass.draw(0..3, 0..1);
                 }
+                log::info!("got encoder");
 
                 queue.submit(Some(encoder.finish()));
+                log::info!("submit");
+                texture.present();
+                log::info!("presented");
+            }
+            Event::MainEventsCleared => {
+                log::info!("main events cleared event");
+            }
+            Event::RedrawEventsCleared => {
+                log::info!("redraw events cleared");
+                // RedrawRequested will only trigger once, unless we manually
+                // request it.
+                window.request_redraw();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
