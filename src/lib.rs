@@ -20,9 +20,7 @@ fn fs_main() -> [[location(0)]] vec4<f32> {
 "#;
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
-    log::info!("run");
     let instance = wgpu::Instance::new(wgpu::Backends::GL);
-    log::info!("instance created");
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
@@ -31,7 +29,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         })
         .await
         .expect("Failed to find an appropriate adapter");
-    log::info!("adapter created");
 
     // Create the logical device and command queue
     let (device, queue) = adapter
@@ -45,7 +42,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         )
         .await
         .expect("Failed to create device");
-    log::info!("device created");
 
     // Load the shaders from disk
     let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
@@ -59,26 +55,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
         push_constant_ranges: &[],
     });
 
-    // works on my android..
-    let swapchain_format = wgpu::TextureFormat::Rgba8UnormSrgb;
-
-    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: None,
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: "vs_main",
-            buffers: &[],
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: "fs_main",
-            targets: &[swapchain_format.into()],
-        }),
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-    });
+    let mut render_pipeline = None;
 
     let mut surface = None;
 
@@ -97,7 +74,6 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                 log::info!("resized: {:?}", size);
             }
             Event::Resumed => {
-                log::info!("resume");
                 surface = Some(unsafe { instance.create_surface(&window) });
                 let config = wgpu::SurfaceConfiguration {
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -111,30 +87,55 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     present_mode: wgpu::PresentMode::Fifo,
                 };
                 surface.as_ref().unwrap().configure(&device, &config);
-                log::info!("surface: {:?}", surface);
+                render_pipeline = Some(device.create_render_pipeline(
+                    &wgpu::RenderPipelineDescriptor {
+                        label: Some("Render Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        vertex: wgpu::VertexState {
+                            module: &shader,
+                            entry_point: "vs_main",
+                            buffers: &[],
+                        },
+                        fragment: Some(wgpu::FragmentState {
+                            module: &shader,
+                            entry_point: "fs_main",
+                            targets: &[wgpu::ColorTargetState {
+                                // 4.
+                                format: config.format,
+                                blend: Some(wgpu::BlendState::REPLACE),
+                                write_mask: wgpu::ColorWrites::ALL,
+                            }],
+                        }),
+                        primitive: wgpu::PrimitiveState::default(),
+                        depth_stencil: None,
+                        multisample: wgpu::MultisampleState::default(),
+                    },
+                ));
             }
             Event::Suspended => {
-                log::info!("suspend");
                 surface.take();
             }
             Event::RedrawRequested(_) => {
-                log::info!("redraw requested");
-                let texture = surface.as_ref().unwrap().get_current_texture().unwrap();
-                log::info!("texture: {:?}", texture);
-                let frame = surface
-                    .as_ref()
-                    .unwrap()
-                    .get_current_texture()
-                    .unwrap()
+                let surface_ref = match surface.as_ref() {
+                    Some(surf) => surf,
+                    None => {
+                        panic!("no surface")
+                    }
+                };
+                let output = match surface_ref.get_current_texture() {
+                    Err(why) => panic!("{:?}", why),
+                    Ok(out) => out,
+                };
+                let frame = output
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
-                log::info!("got frame");
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                });
                 {
                     let t = (start.elapsed().as_secs_f64() / 10.0).sin();
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: None,
+                        label: Some("Render Pass"),
                         color_attachments: &[wgpu::RenderPassColorAttachment {
                             view: &frame,
                             resolve_target: None,
@@ -150,21 +151,14 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                         }],
                         depth_stencil_attachment: None,
                     });
-                    rpass.set_pipeline(&render_pipeline);
+                    rpass.set_pipeline(&render_pipeline.as_ref().unwrap());
                     rpass.draw(0..3, 0..1);
                 }
-                log::info!("got encoder");
 
                 queue.submit(Some(encoder.finish()));
-                log::info!("submit");
-                texture.present();
-                log::info!("presented");
-            }
-            Event::MainEventsCleared => {
-                log::info!("main events cleared event");
+                output.present();
             }
             Event::RedrawEventsCleared => {
-                log::info!("redraw events cleared");
                 // RedrawRequested will only trigger once, unless we manually
                 // request it.
                 window.request_redraw();
